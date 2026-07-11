@@ -201,6 +201,42 @@
   .key.zero{grid-column:span 2;}
 
   .grid-title{font-size:12.5px; font-weight:600; color:var(--hint); margin:2px 2px 10px;}
+
+  /* --- Анализ --- */
+  .analysis-btn{
+    display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+    background:var(--card); border:none; border-radius:20px; padding:14px 16px; margin-bottom:4px;
+    font-family:var(--font); cursor:pointer;
+  }
+  .analysis-btn:active{background:var(--soft);}
+  .analysis-btn .ab-ic{font-size:20px;}
+  .analysis-btn .ab-txt{flex:1; display:flex; flex-direction:column; gap:1px;}
+  .analysis-btn .ab-txt b{font-size:14.5px; font-weight:700; color:var(--text);}
+  .analysis-btn .ab-txt small{font-size:12px; color:var(--hint); font-weight:500;}
+  .analysis-btn .ab-arr{color:var(--hint); font-size:18px;}
+  .period-chips{display:flex; gap:6px; margin-bottom:16px;}
+  .period-chips button{
+    flex:1; border:none; background:var(--card); border-radius:12px; padding:9px 4px;
+    font-family:var(--font); font-size:12.5px; font-weight:600; color:var(--hint); cursor:pointer;
+  }
+  .period-chips button.active{background:var(--accent); color:#fff;}
+  .an-summary{
+    background:var(--soft); border-radius:18px; padding:15px 17px; margin-bottom:14px;
+    font-size:13.5px; line-height:1.6; color:var(--text); font-weight:500;
+  }
+  .an-summary b{color:var(--deep); font-weight:700;}
+  .an-stat-row{display:flex; gap:8px; margin-bottom:14px;}
+  .an-stat{flex:1; background:var(--card); border-radius:16px; padding:12px 13px;}
+  .an-stat .as-lbl{font-size:10.5px; font-weight:700; color:var(--hint); margin-bottom:4px;}
+  .an-stat .as-val{font-size:14px; font-weight:700;}
+  .an-cat-row{margin-bottom:12px;}
+  .an-cat-head{display:flex; align-items:center; gap:8px; margin-bottom:5px;}
+  .an-cat-head .ic{font-size:14px;}
+  .an-cat-head .nm{flex:1; font-size:13px; font-weight:600;}
+  .an-cat-head .vl{font-size:12.5px; font-weight:600; color:var(--hint);}
+  .an-bar{height:8px; border-radius:5px; background:var(--soft); overflow:hidden;}
+  .an-bar .f{height:100%; border-radius:5px;}
+  .an-note{font-size:12px; color:var(--hint); font-weight:500; line-height:1.5; margin-top:14px;}
   .pick-search{margin-bottom:10px;}
   .pick-list{max-height:230px; overflow-y:auto; padding-bottom:4px;}
   .pick-item{
@@ -360,6 +396,12 @@
     <div class="daily-hint" id="dailyHint" style="display:none;"></div>
   </div>
 
+  <button class="analysis-btn" id="analysisBtn">
+    <span class="ab-ic">📊</span>
+    <span class="ab-txt"><b>Анализ</b><small>куда уходят деньги</small></span>
+    <span class="ab-arr">›</span>
+  </button>
+
   <div class="section-title">Расходы</div>
   <div id="ovExpenseCats"></div>
 
@@ -516,6 +558,19 @@
     <button class="theme-option" data-cur="EUR"><span class="to-cur">€</span><span class="to-name">Евро</span><span class="to-check">✓</span></button>
     <button class="theme-option" data-cur="RUB"><span class="to-cur">₽</span><span class="to-name">Российский рубль</span><span class="to-check">✓</span></button>
   </div>
+</div>
+
+<!-- ANALYSIS SHEET -->
+<div class="sheet" id="analysisSheet">
+  <div class="sheet-handle"></div>
+  <h2 class="sheet-h">Анализ</h2>
+  <div class="period-chips" id="periodChips">
+    <button data-p="1" class="active">Месяц</button>
+    <button data-p="3">3 мес</button>
+    <button data-p="6">6 мес</button>
+    <button data-p="12">Год</button>
+  </div>
+  <div id="analysisBody"></div>
 </div>
 
 <!-- WELCOME: выбор валюты при первом запуске -->
@@ -927,7 +982,7 @@ var txSheet=document.getElementById('txSheet');
 var catSheet=document.getElementById('catSheet');
 var settingsSheet=document.getElementById('settingsSheet');
 function openSheet(s){ overlay.classList.add('show'); s.classList.add('show'); }
-function closeSheets(){ if (mustChooseCurrency) return; overlay.classList.remove('show'); txSheet.classList.remove('show'); catSheet.classList.remove('show'); settingsSheet.classList.remove('show'); document.getElementById('depSheet').classList.remove('show'); document.getElementById('billSheet').classList.remove('show'); document.getElementById('welcomeSheet').classList.remove('show'); }
+function closeSheets(){ if (mustChooseCurrency) return; overlay.classList.remove('show'); txSheet.classList.remove('show'); document.getElementById('analysisSheet').classList.remove('show'); catSheet.classList.remove('show'); settingsSheet.classList.remove('show'); document.getElementById('depSheet').classList.remove('show'); document.getElementById('billSheet').classList.remove('show'); document.getElementById('welcomeSheet').classList.remove('show'); }
 overlay.addEventListener('click', closeSheets);
 
 /* ---------- Keypad ---------- */
@@ -1448,6 +1503,121 @@ document.getElementById('iconPickBtn').addEventListener('click', function(){
   var grid=document.getElementById('emojiGrid');
   grid.style.display = grid.style.display==='none' ? 'grid' : 'none';
 });
+
+/* ---------- Анализ ---------- */
+var analysisSheet=document.getElementById('analysisSheet');
+var anPeriod=1;
+document.getElementById('analysisBtn').addEventListener('click', function(){
+  openSheet(analysisSheet);
+  renderAnalysis();
+});
+document.getElementById('periodChips').addEventListener('click', function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  anPeriod=parseInt(b.getAttribute('data-p'),10);
+  document.querySelectorAll('#periodChips button').forEach(function(x){x.classList.remove('active');});
+  b.classList.add('active');
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+  renderAnalysis();
+});
+function monthKeysBack(fromDate, n){
+  var keys=[];
+  for (var i=0;i<n;i++){
+    var d=new Date(fromDate.getFullYear(), fromDate.getMonth()-i, 1);
+    keys.push(monthKey(d));
+  }
+  return keys;
+}
+async function gatherPeriod(keys){
+  var res={income:0, expense:0, byCat:{}, maxTx:null, txCount:0};
+  for (var i=0;i<keys.length;i++){
+    await ensureMonthLoaded(keys[i]);
+    (state.txByMonth[keys[i]]||[]).forEach(function(t){
+      if (t.type==='income'){ res.income+=t.amount; return; }
+      res.expense+=t.amount; res.txCount++;
+      res.byCat[t.categoryId]=(res.byCat[t.categoryId]||0)+t.amount;
+      if (!res.maxTx || t.amount>res.maxTx.amount) res.maxTx=t;
+    });
+  }
+  return res;
+}
+function periodName(n){
+  return n===1?'этот месяц':(n===3?'последние 3 месяца':(n===6?'последние полгода':'последний год'));
+}
+async function renderAnalysis(){
+  var body=document.getElementById('analysisBody');
+  body.innerHTML='<div class="empty">Считаю...</div>';
+  var now=new Date();
+  var keys=monthKeysBack(now, anPeriod);
+  var cur=await gatherPeriod(keys);
+  var prevKeys=monthKeysBack(new Date(now.getFullYear(), now.getMonth()-anPeriod, 1), anPeriod);
+  var prev=await gatherPeriod(prevKeys);
+
+  if (cur.expense===0 && cur.income===0){
+    body.innerHTML='<div class="empty">За '+periodName(anPeriod)+' пока нет операций.</div>';
+    return;
+  }
+
+  // дни периода: от начала до сегодня (для месяца — прошедшие дни)
+  var startDate=new Date(now.getFullYear(), now.getMonth()-(anPeriod-1), 1);
+  var days=Math.max(1, Math.round((now-startDate)/86400000)+1);
+  var perDay=cur.expense/days;
+
+  // топ категорий
+  var cats=Object.keys(cur.byCat).map(function(id){
+    var c=catById(id)||{name:'Без категории',icon:'❔',color:'#B5B0BE'};
+    return {cat:c, sum:cur.byCat[id]};
+  }).sort(function(a,b){return b.sum-a.sum;});
+  var top=cats[0];
+
+  // человеческое резюме
+  var summary='За <b>'+periodName(anPeriod)+'</b> потрачено <b>'+fmt(cur.expense)+'</b> — примерно '+fmt(perDay)+' в день.';
+  if (top){
+    var pctTop=Math.round(top.sum/cur.expense*100);
+    summary+=' Больше всего ушло на «'+escapeHtml(top.cat.name)+'» — <b>'+fmt(top.sum)+'</b> ('+pctTop+'%).';
+  }
+  var saved=cur.income-cur.expense;
+  if (cur.income>0){
+    summary+= saved>=0
+      ? ' Из доходов удалось отложить <b>'+fmt(saved)+'</b>.'
+      : ' Расходы превысили доходы на <b>'+fmt(-saved)+'</b>.';
+  }
+  // сравнение с прошлым периодом
+  var cmp='';
+  if (prev.expense>0){
+    var diff=(cur.expense-prev.expense)/prev.expense*100;
+    if (Math.abs(diff)>=3){
+      cmp=' По сравнению с прошлым периодом траты '+(diff>0?'выросли':'снизились')+' на <b>'+Math.abs(Math.round(diff))+'%</b>.';
+    } else cmp=' Траты примерно на уровне прошлого периода.';
+  }
+  summary+=cmp;
+
+  var html='<div class="an-summary">'+summary+'</div>';
+  html+='<div class="an-stat-row">'+
+    '<div class="an-stat"><div class="as-lbl">ДОХОД</div><div class="as-val num" style="color:var(--deep);">'+fmt(cur.income)+'</div></div>'+
+    '<div class="an-stat"><div class="as-lbl">РАСХОД</div><div class="as-val num">'+fmt(cur.expense)+'</div></div>'+
+    '<div class="an-stat"><div class="as-lbl">В ДЕНЬ</div><div class="as-val num">'+fmt(perDay)+'</div></div>'+
+  '</div>';
+
+  if (cats.length){
+    html+='<div class="grid-title">Куда уходят деньги</div>';
+    cats.slice(0,8).forEach(function(x){
+      var pct=x.sum/cats[0].sum*100;
+      var share=Math.round(x.sum/cur.expense*100);
+      html+='<div class="an-cat-row">'+
+        '<div class="an-cat-head"><span class="ic">'+x.cat.icon+'</span><span class="nm">'+escapeHtml(x.cat.name)+'</span><span class="vl num">'+fmt(x.sum)+' · '+share+'%</span></div>'+
+        '<div class="an-bar"><div class="f" style="width:'+pct+'%;background:'+x.cat.color+';"></div></div>'+
+      '</div>';
+    });
+  }
+
+  if (cur.maxTx){
+    var mc=catById(cur.maxTx.categoryId);
+    html+='<div class="an-note">Самая крупная трата: <b style="color:var(--text);">'+fmt(cur.maxTx.amount)+'</b>'+
+      (mc?' («'+escapeHtml(mc.name)+'»':'')+(cur.maxTx.note?', '+escapeHtml(cur.maxTx.note):'')+(mc?')':'')+
+      ' — '+fmtDateRu(cur.maxTx.date)+'. Всего операций за период: '+cur.txCount+'.</div>';
+  }
+  body.innerHTML=html;
+}
 
 /* ---------- Category editor ---------- */
 document.getElementById('addCatBtn').addEventListener('click', function(){openCatSheet(null);});
