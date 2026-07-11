@@ -307,6 +307,10 @@
     font-size:12.5px; color:var(--hint); font-weight:500; display:flex; justify-content:space-between;
   }
   .dep-card .dc-forecast b{color:var(--deep); font-weight:700;}
+  .dep-card .dc-rate-line{
+    margin-top:8px; font-size:11.5px; color:var(--hint); font-weight:500;
+    display:flex; justify-content:space-between; gap:8px;
+  }
   .dep-card.matured .dc-forecast b{color:var(--warn);}
 
   .currency-toggle{display:flex; background:var(--soft); border-radius:14px; padding:3px; gap:2px; flex-shrink:0;}
@@ -1384,11 +1388,21 @@ function renderDeposits(){
       datesLine = '<div class="dep-bar"><div class="fill" style="width:'+(pct*100)+'%;'+(matured?'background:var(--warn);':'')+'"></div></div>'+
         '<div class="dc-dates"><span>'+fmtDateRu(d.startDate)+' → '+fmtDateRu(d.endDate)+'</span><span>'+leftTxt+'</span></div>';
     }
+    // курс валюты вклада (ЦБ РУз) и эквивалент в сумах
+    var rateLine = '';
+    if (d.currency!=='UZS' && fx.rates && fx.rates[d.currency]){
+      var r = fx.rates[d.currency];
+      var eq = d.amount * r;
+      rateLine = '<div class="dc-rate-line">'+
+        '<span>1 '+CUR_SIGN[d.currency]+' = '+r.toLocaleString('ru-RU',{maximumFractionDigits:2})+' сум'+(fx.date?' · ЦБ от '+fmtDateRu(fx.date):'')+'</span>'+
+        '<span class="num">≈ '+fmtCur(eq,'UZS')+'</span>'+
+      '</div>';
+    }
     card.innerHTML =
       '<div class="dc-top"><div class="dc-name">'+escapeHtml(d.name||'Вклад')+'</div>'+
       (d.rate?'<div class="dc-rate">'+d.rate+'%'+(d.compound?' · капит.':' годовых')+'</div>':'')+'</div>'+
       '<div class="dc-amount num">'+fmtCur(d.amount,d.currency).replace(' '+CUR_SIGN[d.currency],'')+'<span class="cur">'+CUR_SIGN[d.currency]+'</span></div>'+
-      datesLine + forecast;
+      rateLine + datesLine + forecast;
     card.addEventListener('click', function(){ openDepSheet(d.id); });
     list.appendChild(card);
   });
