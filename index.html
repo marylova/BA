@@ -76,6 +76,10 @@
   .theme-option .to-check{color:var(--deep); font-size:16px; opacity:0; font-weight:700;}
   .theme-option.sel .to-check{opacity:1;}
   .theme-option.sel{box-shadow:0 0 0 1.5px var(--accent);}
+  .theme-option .to-cur{
+    width:38px; height:38px; border-radius:12px; background:var(--soft); color:var(--deep);
+    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0;
+  }
 
   .month-switch{display:flex; align-items:center; justify-content:center; gap:4px; margin:10px 0 20px;}
   .month-switch button{background:none;border:none;color:var(--hint);font-size:17px;padding:6px 14px;cursor:pointer;border-radius:12px;}
@@ -332,7 +336,7 @@
 
   <div class="balance-card">
     <div class="eyebrow">Осталось в этом месяце</div>
-    <div class="big num" id="ovRemaining">0<span class="cur">сум</span></div>
+    <div class="big num" id="ovRemaining">0<span class="cur"></span></div>
     <div class="balance-grid">
       <div><div class="lbl">Доход</div><div class="val num" id="ovIncome" style="color:var(--deep);">0</div></div>
       <div><div class="lbl">Расход</div><div class="val num" id="ovExpense">0</div></div>
@@ -481,6 +485,28 @@
       <span class="to-check">✓</span>
     </button>
   </div>
+  <div class="field-label">Валюта учёта</div>
+  <div id="mainCurOptions">
+    <button class="theme-option" data-cur="UZS"><span class="to-cur">сум</span><span class="to-name">Узбекский сум</span><span class="to-check">✓</span></button>
+    <button class="theme-option" data-cur="USD"><span class="to-cur">$</span><span class="to-name">Доллар США</span><span class="to-check">✓</span></button>
+    <button class="theme-option" data-cur="EUR"><span class="to-cur">€</span><span class="to-name">Евро</span><span class="to-check">✓</span></button>
+    <button class="theme-option" data-cur="RUB"><span class="to-cur">₽</span><span class="to-name">Российский рубль</span><span class="to-check">✓</span></button>
+  </div>
+</div>
+
+<!-- WELCOME: выбор валюты при первом запуске -->
+<div class="sheet" id="welcomeSheet">
+  <div class="sheet-handle"></div>
+  <h2 class="sheet-h">Добро пожаловать! 🌸</h2>
+  <div style="font-size:13.5px; color:var(--hint); font-weight:500; line-height:1.55; margin:-6px 0 14px;">
+    В какой валюте вести учёт расходов и доходов? Её можно будет поменять в настройках.
+  </div>
+  <div id="welcomeCurOptions">
+    <button class="theme-option" data-cur="UZS"><span class="to-cur">сум</span><span class="to-name">Узбекский сум</span></button>
+    <button class="theme-option" data-cur="USD"><span class="to-cur">$</span><span class="to-name">Доллар США</span></button>
+    <button class="theme-option" data-cur="EUR"><span class="to-cur">€</span><span class="to-name">Евро</span></button>
+    <button class="theme-option" data-cur="RUB"><span class="to-cur">₽</span><span class="to-name">Российский рубль</span></button>
+  </div>
 </div>
 
 <!-- DEPOSIT EDITOR SHEET -->
@@ -520,7 +546,7 @@
   <div class="field-label" style="margin-top:4px;">Название</div>
   <input class="text-field" id="billName" placeholder="Например: Аренда, интернет, кредит">
   <div class="field-label">Сумма в месяц</div>
-  <input class="text-field" id="billAmount" type="number" inputmode="numeric" placeholder="Сумма в сумах">
+  <input class="text-field" id="billAmount" type="number" inputmode="numeric" placeholder="Сумма">
   <div class="field-label">День оплаты (число месяца)</div>
   <input class="text-field" id="billDay" type="number" inputmode="numeric" min="1" max="31" placeholder="Например: 5">
   <div class="field-label">Напомнить за сколько дней</div>
@@ -592,6 +618,31 @@ document.getElementById('settingsBtn').addEventListener('click', function(){
   openSheet(settingsSheet);
 });
 
+/* ---------- Валюта учёта ---------- */
+var mustChooseCurrency = false;
+function syncMainCurUI(){
+  document.querySelectorAll('#mainCurOptions .theme-option').forEach(function(b){
+    b.classList.toggle('sel', b.getAttribute('data-cur')===mainCur);
+  });
+}
+async function setMainCur(c){
+  mainCur = c;
+  await storage.rawSet('main_currency', c);
+  syncMainCurUI();
+  renderOverview();
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+}
+document.getElementById('mainCurOptions').addEventListener('click', function(e){
+  var b=e.target.closest('.theme-option'); if(!b) return;
+  setMainCur(b.getAttribute('data-cur'));
+});
+document.getElementById('welcomeCurOptions').addEventListener('click', async function(e){
+  var b=e.target.closest('.theme-option'); if(!b) return;
+  mustChooseCurrency = false;
+  await setMainCur(b.getAttribute('data-cur'));
+  closeSheets();
+});
+
 /* ---------- State ---------- */
 var CAT_COLORS = ['#D998B0','#AC97D6','#8CC4AB','#8FB4D6','#E0B58C','#D98C8C','#9DBBA4','#ABA5BD'];
 var MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -605,8 +656,13 @@ var state = {
 };
 
 function monthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-function fmt(n){ n=Math.round(n||0); return n.toLocaleString('ru-RU')+' сум'; }
-function fmtShort(n){ n=Math.round(n||0); return n.toLocaleString('ru-RU'); }
+var CUR_SIGN = {UZS:'сум', USD:'$', EUR:'€', RUB:'₽'};
+var mainCur = 'UZS';  // валюта учёта, выбирается при первом запуске
+function fmtShort(n){
+  n = Math.round((n||0) * (mainCur==='UZS'?1:100)) / (mainCur==='UZS'?1:100);
+  return n.toLocaleString('ru-RU', {maximumFractionDigits: mainCur==='UZS'?0:2});
+}
+function fmt(n){ return fmtShort(n)+' '+CUR_SIGN[mainCur]; }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function catById(id){ return state.categories.find(function(c){return c.id===id;}); }
 function escapeHtml(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
@@ -670,7 +726,7 @@ function renderOverview(){
   document.getElementById('ovExpense').textContent = fmt(expense);
   var remaining = income - expense;
   document.getElementById('ovRemaining').innerHTML =
-    (remaining<0?'−':'')+fmtShort(Math.abs(remaining))+'<span class="cur">сум</span>';
+    (remaining<0?'−':'')+fmtShort(Math.abs(remaining))+'<span class="cur">'+CUR_SIGN[mainCur]+'</span>';
 
   var hint = document.getElementById('dailyHint');
   var now = new Date();
@@ -680,7 +736,7 @@ function renderOverview(){
     var daysLeft = daysInMonth - now.getDate() + 1;
     var perDay = remaining / daysLeft;
     hint.style.display='block';
-    hint.innerHTML = 'До конца месяца '+daysLeft+' дн. · примерно <b>'+fmtShort(perDay)+' сум в день</b>';
+    hint.innerHTML = 'До конца месяца '+daysLeft+' дн. · примерно <b>'+fmtShort(perDay)+' '+CUR_SIGN[mainCur]+' в день</b>';
   } else hint.style.display='none';
 
   var expWrap = document.getElementById('ovExpenseCats'); expWrap.innerHTML='';
@@ -709,7 +765,7 @@ function renderOverviewNumbers(){
   document.getElementById('ovExpense').textContent = fmt(expense);
   var remaining = income - expense;
   document.getElementById('ovRemaining').innerHTML =
-    (remaining<0?'−':'')+fmtShort(Math.abs(remaining))+'<span class="cur">сум</span>';
+    (remaining<0?'−':'')+fmtShort(Math.abs(remaining))+'<span class="cur">'+CUR_SIGN[mainCur]+'</span>';
 }
 
 function ringSVG(pct, color){
@@ -851,7 +907,7 @@ var txSheet=document.getElementById('txSheet');
 var catSheet=document.getElementById('catSheet');
 var settingsSheet=document.getElementById('settingsSheet');
 function openSheet(s){ overlay.classList.add('show'); s.classList.add('show'); }
-function closeSheets(){ overlay.classList.remove('show'); txSheet.classList.remove('show'); catSheet.classList.remove('show'); settingsSheet.classList.remove('show'); document.getElementById('depSheet').classList.remove('show'); document.getElementById('billSheet').classList.remove('show'); }
+function closeSheets(){ if (mustChooseCurrency) return; overlay.classList.remove('show'); txSheet.classList.remove('show'); catSheet.classList.remove('show'); settingsSheet.classList.remove('show'); document.getElementById('depSheet').classList.remove('show'); document.getElementById('billSheet').classList.remove('show'); document.getElementById('welcomeSheet').classList.remove('show'); }
 overlay.addEventListener('click', closeSheets);
 
 /* ---------- Keypad ---------- */
@@ -948,7 +1004,6 @@ async function saveTx(catId){
 }
 
 /* ---------- Копилка (вклады) ---------- */
-var CUR_SIGN = {UZS:'сум', USD:'$', EUR:'€', RUB:'₽'};
 function fmtCur(n, cur){
   n = Math.round((n||0)*100)/100;
   var s = n.toLocaleString('ru-RU', {maximumFractionDigits: cur==='UZS'?0:2});
@@ -1234,7 +1289,7 @@ function openDepSheet(id){
   document.getElementById('depRate').value=d&&d.rate?d.rate:'';
   document.getElementById('depStart').value=d&&d.startDate?d.startDate:isoDate(new Date());
   document.getElementById('depEnd').value=d&&d.endDate?d.endDate:'';
-  depCurrency=d?d.currency:'UZS';
+  depCurrency=d?d.currency:mainCur;
   depCompound=!!(d&&d.compound);
   document.getElementById('depCompound').classList.toggle('on', depCompound);
   syncDepCurrency();
@@ -1393,7 +1448,18 @@ async function boot(){
   await loadAll();
   var savedCur = await storage.rawGet('display_currency');
   if (savedCur) displayCurrency = savedCur;
+  var savedMain = await storage.rawGet('main_currency');
+  if (savedMain && CUR_SIGN[savedMain]){
+    mainCur = savedMain;
+  } else {
+    mustChooseCurrency = true;
+  }
+  syncMainCurUI();
   renderOverview();
+  if (mustChooseCurrency){
+    overlay.classList.add('show');
+    document.getElementById('welcomeSheet').classList.add('show');
+  }
   loadRates().then(function(){
     // если Копилка уже открыта — обновляем итог по свежему курсу
     if (document.getElementById('screen-savings').classList.contains('active')) renderDeposits();
