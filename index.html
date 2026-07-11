@@ -883,17 +883,13 @@ function renderCatTab(){
 }
 function catRow(c){
   var row=document.createElement('div'); row.className='cat-list-item';
+  row.style.cursor='pointer';
   var sub=c.type==='expense'?(c.budget?'Бюджет: '+fmt(c.budget)+' в месяц':'Без лимита'):'Доход';
   row.innerHTML='<div class="cat-swatch" style="background:'+c.color+'26;color:'+c.color+'">'+c.icon+'</div>'+
     '<div style="flex:1;"><div class="ci-name">'+escapeHtml(c.name)+'</div><div class="ci-sub">'+sub+'</div></div>'+
-    '<button class="cat-edit" data-catid="'+c.id+'">✎</button>';
+    '<span class="cat-edit">✎</span>';
+  row.addEventListener('click', function(){ openCatSheet(c.id); });
   return row;
-}
-document.getElementById('catListExpense').addEventListener('click', catEditClick);
-document.getElementById('catListIncome').addEventListener('click', catEditClick);
-function catEditClick(e){
-  var btn=e.target.closest('.cat-edit'); if(!btn) return;
-  openCatSheet(btn.getAttribute('data-catid'));
 }
 
 /* ---------- Tabs / month ---------- */
@@ -1139,6 +1135,8 @@ function renderBills(){
       '<div class="bill-day"><span class="d">'+b.day+'</span><span class="m">числа</span></div>'+
       '<div class="bill-mid" data-billid="'+b.id+'"><div class="bn">'+escapeHtml(b.name)+'</div><div class="bs num '+statusCls+'">'+statusTxt+'</div></div>'+
       '<button class="bill-pay'+(isPaid?' paid':'')+'" data-payid="'+b.id+'">'+(isPaid?'✓ Оплачено':'Оплатить')+'</button>';
+    row.querySelector('.bill-day').style.cursor='pointer';
+    row.querySelector('.bill-day').addEventListener('click', function(){ openBillSheet(b.id); });
     wrap.appendChild(row);
   });
 }
