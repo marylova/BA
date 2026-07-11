@@ -18,6 +18,7 @@
   [data-palette="lavender"]{ --tint:#F6F4FB; --soft:#E6E0F4; --accent:#AC97D6; --deep:#82709F; }
   [data-palette="mint"]    { --tint:#F2F8F5; --soft:#DCEEE5; --accent:#8CC4AB; --deep:#639D84; }
   [data-palette="sky"]     { --tint:#F2F6FA; --soft:#DEEAF4; --accent:#8FB4D6; --deep:#67899F; }
+  [data-palette="dasha"]   { --tint:#F2F9F8; --soft:#DBEFEC; --accent:#8FC9C0; --deep:#649B92; }
 
   :root{
     --bg:var(--tint);
@@ -41,6 +42,7 @@
   [data-theme="dark"][data-palette="lavender"]{ --soft:#312D3D; --accent:#AC97D6; --deep:#C4B3E3; }
   [data-theme="dark"][data-palette="mint"]    { --soft:#28362F; --accent:#8CC4AB; --deep:#A9D6C1; }
   [data-theme="dark"][data-palette="sky"]     { --soft:#293440; --accent:#8FB4D6; --deep:#ABC8E1; }
+  [data-theme="dark"][data-palette="dasha"]   { --soft:#263733; --accent:#8FC9C0; --deep:#ACDAD2; }
 
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{height:100%;}
@@ -501,6 +503,11 @@
       <span class="to-name">Небо</span>
       <span class="to-check">✓</span>
     </button>
+    <button class="theme-option" data-pal="dasha">
+      <span class="to-dot" style="background:#8FC9C0;"></span>
+      <span class="to-name">Даша — нежный цветочек 🌷</span>
+      <span class="to-check">✓</span>
+    </button>
   </div>
   <div class="field-label">Валюта учёта</div>
   <div id="mainCurOptions">
@@ -616,7 +623,7 @@ var storage = {
 };
 
 /* ---------- Палитры (переключение темы) ---------- */
-var PALETTES = ['rose','lavender','mint','sky'];
+var PALETTES = ['rose','lavender','mint','sky','dasha'];
 function applyPalette(p){
   if (PALETTES.indexOf(p)===-1) p='rose';
   document.documentElement.setAttribute('data-palette', p);
