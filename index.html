@@ -1055,9 +1055,11 @@ document.getElementById('keypad').addEventListener('click', function(e){
 
 /* ---------- Tx sheet ---------- */
 var txType='expense';
+var txSaving=false; // замок: не даём сохранить операцию дважды дабл-тапом
 var pickMode='cat'; // 'cat' | 'bill'
 document.getElementById('fabAdd').addEventListener('click', openTxSheet);
 function openTxSheet(){
+  txSaving=false;
   txType='expense';
   pickMode='cat';
   syncTypeToggle(); syncPickMode();
@@ -1088,6 +1090,7 @@ document.getElementById('pickSearch').addEventListener('input', renderPickList);
 
 function renderPickList(){
   var list=document.getElementById('pickList'); list.innerHTML='';
+  list.style.pointerEvents='';
   var q=(document.getElementById('pickSearch').value||'').trim().toLowerCase();
   if (pickMode==='cat'){
     var cats=state.categories.filter(function(c){
@@ -1159,8 +1162,11 @@ function updatePickState(){
   });
 }
 async function saveTx(catId){
+  if (txSaving) return;
   var amount=calcTotal();
   if (amount<=0) return;
+  txSaving=true;
+  document.getElementById('pickList').style.pointerEvents='none';
   var date=document.getElementById('txDate').value||isoDate(new Date());
   var mk=date.slice(0,7);
   var tx={id:uid(), amount:amount, type:txType, categoryId:catId, note:document.getElementById('txNote').value.trim(), date:date, createdAt:Date.now()};
@@ -1168,6 +1174,7 @@ async function saveTx(catId){
   (state.txByMonth[mk]=state.txByMonth[mk]||[]).push(tx);
   await saveMonth(mk);
   state.lastUsedCat[txType]=catId; await saveLastUsed();
+  txSaving=false;
   closeSheets(); haptic();
   if (mk!==monthKey(state.curMonth)) state.curMonth=new Date(mk+'-01T00:00:00');
   renderOverview(); renderTxList();
@@ -1182,6 +1189,7 @@ async function ensureDepoCategory(){
   return c.id;
 }
 async function saveTxDeposit(dep){
+  if (txSaving) return;
   var amount=calcTotal();
   if (amount<=0) return;
   // сумма набирается в валюте учёта; если вклад в другой валюте — пересчёт по ЦБ
@@ -1191,6 +1199,8 @@ async function saveTxDeposit(dep){
     if (conv===null){ tgAlert('Нет курса ЦБ для пересчёта в валюту вклада. Проверьте интернет и попробуйте снова.'); return; }
     toDeposit = conv;
   }
+  txSaving=true;
+  document.getElementById('pickList').style.pointerEvents='none';
   var date=document.getElementById('txDate').value||isoDate(new Date());
   var mk=date.slice(0,7);
   var catId=await ensureDepoCategory();
@@ -1201,6 +1211,7 @@ async function saveTxDeposit(dep){
   await saveMonth(mk);
   dep.amount = Math.round((dep.amount + toDeposit)*100)/100;
   await saveDeposits();
+  txSaving=false;
   closeSheets(); haptic();
   if (mk!==monthKey(state.curMonth)) state.curMonth=new Date(mk+'-01T00:00:00');
   renderOverview(); renderTxList();
@@ -1208,6 +1219,9 @@ async function saveTxDeposit(dep){
 
 /* Оплата обязательного платежа из формы: сумма платежа (или введённая, если набрана) */
 async function saveTxBill(bill){
+  if (txSaving) return;
+  txSaving=true;
+  document.getElementById('pickList').style.pointerEvents='none';
   var typed=calcTotal();
   var amount = typed>0 ? typed : bill.amount;
   var date=document.getElementById('txDate').value||isoDate(new Date());
@@ -1221,6 +1235,7 @@ async function saveTxBill(bill){
   var paid=state.billsPaid[mk]=state.billsPaid[mk]||[];
   if (paid.indexOf(bill.id)===-1) paid.push(bill.id);
   await saveBillsPaid();
+  txSaving=false;
   closeSheets(); haptic();
   if (mk!==monthKey(state.curMonth)) state.curMonth=new Date(mk+'-01T00:00:00');
   renderOverview(); renderTxList();
@@ -1292,9 +1307,13 @@ function renderBills(){
     wrap.appendChild(row);
   });
 }
+var billPayBusy=false;
 document.getElementById('billList').addEventListener('click', async function(e){
   var pay=e.target.closest('.bill-pay');
   if (pay){
+    if (billPayBusy) return;
+    billPayBusy=true;
+    setTimeout(function(){ billPayBusy=false; }, 800);
     var id=pay.getAttribute('data-payid');
     var b=state.bills.find(function(x){return x.id===id;});
     if (!b) return;
