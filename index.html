@@ -1056,7 +1056,7 @@ document.getElementById('pmBill').addEventListener('click', function(){ pickMode
 function syncPickMode(){
   document.getElementById('pickModeToggle').style.display = txType==='expense' ? 'flex' : 'none';
   if (txType!=='expense') pickMode='cat';
-  document.getElementById('pmCat').classList.toggle('active', pickMode==='cat');
+  document.getElementById('pmCat').classList.toggle('active', pickMode==='cat'||pickMode==='depo');
   document.getElementById('pmBill').classList.toggle('active', pickMode==='bill');
   document.getElementById('pickSearch').placeholder = pickMode==='cat' ? 'Поиск по категориям...' : 'Поиск по платежам...';
 }
@@ -1077,6 +1077,34 @@ function renderPickList(){
       item.innerHTML='<div class="pi-ic" style="background:'+c.color+'26;color:'+c.color+'">'+c.icon+'</div>'+
         '<div class="pi-name">'+escapeHtml(c.name)+'</div>';
       item.addEventListener('click', function(){ saveTx(c.id); });
+      list.appendChild(item);
+    });
+    // встроенная категория: Пополнение вклада
+    if (txType==='expense' && (!q || 'пополнение вклада'.indexOf(q)!==-1)){
+      var dep=document.createElement('button');
+      dep.className='pick-item';
+      dep.innerHTML='<div class="pi-ic" style="background:var(--soft);color:var(--deep);">🏦</div>'+
+        '<div class="pi-name">Пополнение вклада</div><div class="pi-sub">›</div>';
+      dep.addEventListener('click', function(){
+        pickMode='depo';
+        document.getElementById('pickSearch').value='';
+        document.getElementById('pickSearch').placeholder='Поиск по вкладам...';
+        renderPickList();
+      });
+      list.appendChild(dep);
+    }
+  } else if (pickMode==='depo'){
+    var deps=state.deposits.filter(function(d){
+      return !q || (d.name||'').toLowerCase().indexOf(q)!==-1;
+    });
+    if (!deps.length){ list.innerHTML='<div class="empty" style="padding:14px 0;">'+(q?'Ничего не найдено':'Сначала добавьте вклад на вкладке «Копилка»')+'</div>'; return; }
+    deps.forEach(function(d){
+      var item=document.createElement('button');
+      item.className='pick-item';
+      item.innerHTML='<div class="pi-ic" style="background:var(--soft);color:var(--deep);font-size:12px;font-weight:700;">'+CUR_SIGN[d.currency]+'</div>'+
+        '<div class="pi-name">'+escapeHtml(d.name||'Вклад')+'</div>'+
+        '<div class="pi-sub num">'+fmtCur(d.amount,d.currency)+'</div>';
+      item.addEventListener('click', function(){ saveTxDeposit(d); });
       list.appendChild(item);
     });
   } else {
@@ -1100,8 +1128,8 @@ function renderPickList(){
   updatePickState();
 }
 function updatePickState(){
-  // категории требуют введённой суммы; платёж — нет (сумма своя)
-  var disabled = pickMode==='cat' && calcTotal()<=0;
+  // категории и пополнение требуют введённой суммы; платёж — нет (сумма своя)
+  var disabled = (pickMode==='cat'||pickMode==='depo') && calcTotal()<=0;
   document.querySelectorAll('#pickList .pick-item').forEach(function(item){
     if (!item.classList.contains('bill-mode')) item.classList.toggle('disabled', disabled);
   });
@@ -1120,6 +1148,40 @@ async function saveTx(catId){
   if (mk!==monthKey(state.curMonth)) state.curMonth=new Date(mk+'-01T00:00:00');
   renderOverview(); renderTxList();
 }
+/* Пополнение вклада: расход в категории «Пополнение вклада» + увеличение суммы вклада */
+async function ensureDepoCategory(){
+  var c = state.categories.find(function(x){ return x.type==='expense' && x.name==='Пополнение вклада'; });
+  if (c) return c.id;
+  c = {id:uid(), name:'Пополнение вклада', icon:'🏦', color:CAT_COLORS[3], type:'expense', budget:0};
+  state.categories.push(c);
+  await saveCategories();
+  return c.id;
+}
+async function saveTxDeposit(dep){
+  var amount=calcTotal();
+  if (amount<=0) return;
+  // сумма набирается в валюте учёта; если вклад в другой валюте — пересчёт по ЦБ
+  var toDeposit = amount;
+  if (dep.currency !== mainCur){
+    var conv = convert(amount, mainCur, dep.currency);
+    if (conv===null){ tgAlert('Нет курса ЦБ для пересчёта в валюту вклада. Проверьте интернет и попробуйте снова.'); return; }
+    toDeposit = conv;
+  }
+  var date=document.getElementById('txDate').value||isoDate(new Date());
+  var mk=date.slice(0,7);
+  var catId=await ensureDepoCategory();
+  var note=document.getElementById('txNote').value.trim()||('Пополнение: '+(dep.name||'вклад'));
+  var tx={id:uid(), amount:amount, type:'expense', categoryId:catId, note:note, date:date, createdAt:Date.now(), depositId:dep.id};
+  await ensureMonthLoaded(mk);
+  (state.txByMonth[mk]=state.txByMonth[mk]||[]).push(tx);
+  await saveMonth(mk);
+  dep.amount = Math.round((dep.amount + toDeposit)*100)/100;
+  await saveDeposits();
+  closeSheets(); haptic();
+  if (mk!==monthKey(state.curMonth)) state.curMonth=new Date(mk+'-01T00:00:00');
+  renderOverview(); renderTxList();
+}
+
 /* Оплата обязательного платежа из формы: сумма платежа (или введённая, если набрана) */
 async function saveTxBill(bill){
   var typed=calcTotal();
@@ -1563,8 +1625,6 @@ async function renderAnalysis(){
   var now=new Date();
   var keys=monthKeysBack(now, anPeriod);
   var cur=await gatherPeriod(keys);
-  var prevKeys=monthKeysBack(new Date(now.getFullYear(), now.getMonth()-anPeriod, 1), anPeriod);
-  var prev=await gatherPeriod(prevKeys);
 
   if (cur.expense===0 && cur.income===0){
     body.innerHTML='<div class="empty">За '+periodName(anPeriod)+' пока нет операций.</div>';
@@ -1581,31 +1641,8 @@ async function renderAnalysis(){
     var c=catById(id)||{name:'Без категории',icon:'❔',color:'#B5B0BE'};
     return {cat:c, sum:cur.byCat[id]};
   }).sort(function(a,b){return b.sum-a.sum;});
-  var top=cats[0];
 
-  // человеческое резюме
-  var summary='За <b>'+periodName(anPeriod)+'</b> потрачено <b>'+fmt(cur.expense)+'</b> — примерно '+fmt(perDay)+' в день.';
-  if (top){
-    var pctTop=Math.round(top.sum/cur.expense*100);
-    summary+=' Больше всего ушло на «'+escapeHtml(top.cat.name)+'» — <b>'+fmt(top.sum)+'</b> ('+pctTop+'%).';
-  }
-  var saved=cur.income-cur.expense;
-  if (cur.income>0){
-    summary+= saved>=0
-      ? ' Из доходов удалось отложить <b>'+fmt(saved)+'</b>.'
-      : ' Расходы превысили доходы на <b>'+fmt(-saved)+'</b>.';
-  }
-  // сравнение с прошлым периодом
-  var cmp='';
-  if (prev.expense>0){
-    var diff=(cur.expense-prev.expense)/prev.expense*100;
-    if (Math.abs(diff)>=3){
-      cmp=' По сравнению с прошлым периодом траты '+(diff>0?'выросли':'снизились')+' на <b>'+Math.abs(Math.round(diff))+'%</b>.';
-    } else cmp=' Траты примерно на уровне прошлого периода.';
-  }
-  summary+=cmp;
-
-  var html='<div class="an-summary">'+summary+'</div>';
+  var html='';
   html+='<div class="an-stat-row">'+
     '<div class="an-stat"><div class="as-lbl">ДОХОД</div><div class="as-val num" style="color:var(--deep);">'+fmt(cur.income)+'</div></div>'+
     '<div class="an-stat"><div class="as-lbl">РАСХОД</div><div class="as-val num">'+fmt(cur.expense)+'</div></div>'+
