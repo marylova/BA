@@ -573,6 +573,11 @@
     <button data-p="3">3 мес</button>
     <button data-p="6">6 мес</button>
     <button data-p="12">Год</button>
+    <button data-p="custom">Свой</button>
+  </div>
+  <div class="meta-row" id="customPeriodRow" style="display:none; margin:0 0 14px;">
+    <input type="date" id="anFrom" style="flex:1;">
+    <input type="date" id="anTo" style="flex:1;">
   </div>
   <div id="analysisBody"></div>
 </div>
@@ -1589,12 +1594,22 @@ document.getElementById('analysisBtn').addEventListener('click', function(){
 });
 document.getElementById('periodChips').addEventListener('click', function(e){
   var b=e.target.closest('button'); if(!b) return;
-  anPeriod=parseInt(b.getAttribute('data-p'),10);
+  var p=b.getAttribute('data-p');
+  anPeriod = p==='custom' ? 'custom' : parseInt(p,10);
   document.querySelectorAll('#periodChips button').forEach(function(x){x.classList.remove('active');});
   b.classList.add('active');
+  var row=document.getElementById('customPeriodRow');
+  row.style.display = anPeriod==='custom' ? 'flex' : 'none';
+  if (anPeriod==='custom' && !document.getElementById('anFrom').value){
+    var now=new Date();
+    document.getElementById('anFrom').value=isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    document.getElementById('anTo').value=isoDate(now);
+  }
   if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
   renderAnalysis();
 });
+document.getElementById('anFrom').addEventListener('change', renderAnalysis);
+document.getElementById('anTo').addEventListener('change', renderAnalysis);
 function monthKeysBack(fromDate, n){
   var keys=[];
   for (var i=0;i<n;i++){
@@ -1603,11 +1618,13 @@ function monthKeysBack(fromDate, n){
   }
   return keys;
 }
-async function gatherPeriod(keys){
+async function gatherPeriod(keys, fromDate, toDate){
   var res={income:0, expense:0, byCat:{}, maxTx:null, txCount:0};
   for (var i=0;i<keys.length;i++){
     await ensureMonthLoaded(keys[i]);
     (state.txByMonth[keys[i]]||[]).forEach(function(t){
+      if (fromDate && t.date<fromDate) return;
+      if (toDate && t.date>toDate) return;
       if (t.type==='income'){ res.income+=t.amount; return; }
       res.expense+=t.amount; res.txCount++;
       res.byCat[t.categoryId]=(res.byCat[t.categoryId]||0)+t.amount;
@@ -1617,23 +1634,36 @@ async function gatherPeriod(keys){
   return res;
 }
 function periodName(n){
+  if (n==='custom') return 'выбранный период';
   return n===1?'этот месяц':(n===3?'последние 3 месяца':(n===6?'последние полгода':'последний год'));
 }
 async function renderAnalysis(){
   var body=document.getElementById('analysisBody');
   body.innerHTML='<div class="empty">Считаю...</div>';
   var now=new Date();
-  var keys=monthKeysBack(now, anPeriod);
-  var cur=await gatherPeriod(keys);
+  var keys, cur, startDate, endDate;
+  if (anPeriod==='custom'){
+    var f=document.getElementById('anFrom').value, t=document.getElementById('anTo').value;
+    if (!f || !t){ body.innerHTML='<div class="empty">Выберите обе даты</div>'; return; }
+    if (t<f){ body.innerHTML='<div class="empty">Дата «по» раньше даты «с» — поменяйте местами</div>'; return; }
+    startDate=new Date(f+'T00:00:00'); endDate=new Date(t+'T00:00:00');
+    keys=[];
+    var d=new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    while (d<=endDate){ keys.push(monthKey(d)); d=new Date(d.getFullYear(), d.getMonth()+1, 1); }
+    cur=await gatherPeriod(keys, f, t);
+  } else {
+    keys=monthKeysBack(now, anPeriod);
+    cur=await gatherPeriod(keys);
+    startDate=new Date(now.getFullYear(), now.getMonth()-(anPeriod-1), 1);
+    endDate=now;
+  }
 
   if (cur.expense===0 && cur.income===0){
     body.innerHTML='<div class="empty">За '+periodName(anPeriod)+' пока нет операций.</div>';
     return;
   }
 
-  // дни периода: от начала до сегодня (для месяца — прошедшие дни)
-  var startDate=new Date(now.getFullYear(), now.getMonth()-(anPeriod-1), 1);
-  var days=Math.max(1, Math.round((now-startDate)/86400000)+1);
+  var days=Math.max(1, Math.round((endDate-startDate)/86400000)+1);
   var perDay=cur.expense/days;
 
   // топ категорий
