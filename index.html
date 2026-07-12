@@ -237,6 +237,21 @@
   .an-bar{height:8px; border-radius:5px; background:var(--soft); overflow:hidden;}
   .an-bar .f{height:100%; border-radius:5px;}
   .an-note{font-size:12px; color:var(--hint); font-weight:500; line-height:1.5; margin-top:14px;}
+  .cal-month{margin-bottom:18px;}
+  .cal-title{font-size:13.5px; font-weight:700; margin:0 2px 8px;}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px;}
+  .cal-wd{font-size:9.5px; font-weight:700; color:var(--hint); text-align:center; padding:2px 0;}
+  .cal-day{
+    background:var(--card); border-radius:10px; min-height:44px; padding:4px 2px 3px;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:2px;
+  }
+  .cal-day .cd-n{font-size:10px; font-weight:600; color:var(--hint); line-height:1;}
+  .cal-day .cd-v{font-size:10px; font-weight:700; color:var(--text); line-height:1;}
+  .cal-day.free{background:var(--soft);}
+  .cal-day.free .cd-v{font-size:13px; line-height:1;}
+  .cal-day.out{background:transparent;}
+  .cal-day.future{opacity:.35;}
+  .cal-legend{font-size:11.5px; color:var(--hint); font-weight:500; margin:2px 2px 14px;}
   .pick-search{margin-bottom:10px;}
   .pick-list{max-height:230px; overflow-y:auto; padding-bottom:4px;}
   .pick-item{
@@ -578,6 +593,10 @@
   <div class="meta-row" id="customPeriodRow" style="display:none; margin:0 0 14px;">
     <input type="date" id="anFrom" style="flex:1;">
     <input type="date" id="anTo" style="flex:1;">
+  </div>
+  <div class="type-toggle" style="margin-bottom:14px;">
+    <button class="active" id="amSummary">Сводка</button>
+    <button id="amCalendar">Календарь</button>
   </div>
   <div id="analysisBody"></div>
 </div>
@@ -1588,6 +1607,60 @@ document.getElementById('iconPickBtn').addEventListener('click', function(){
 /* ---------- Анализ ---------- */
 var analysisSheet=document.getElementById('analysisSheet');
 var anPeriod=1;
+var anMode='summary';
+document.getElementById('amSummary').addEventListener('click', function(){
+  anMode='summary';
+  this.classList.add('active'); document.getElementById('amCalendar').classList.remove('active');
+  renderAnalysis();
+});
+document.getElementById('amCalendar').addEventListener('click', function(){
+  anMode='cal';
+  this.classList.add('active'); document.getElementById('amSummary').classList.remove('active');
+  renderAnalysis();
+});
+function fmtTiny(v){
+  if (mainCur==='UZS'){
+    if (v>=1000000) return (Math.round(v/100000)/10).toLocaleString('ru-RU')+'М';
+    if (v>=1000) return Math.round(v/1000)+'к';
+    return String(Math.round(v));
+  }
+  if (v>=1000) return (Math.round(v/100)/10).toLocaleString('ru-RU')+'к';
+  return String(Math.round(v));
+}
+function renderCalendar(cur, startDate, endDate){
+  var now=new Date(); var todayIso=isoDate(now);
+  var html='<div class="cal-legend">👑 — день без трат</div>';
+  var WDS=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  var m=new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  var endM=new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  while (m<=endM){
+    html+='<div class="cal-month"><div class="cal-title">'+MONTHS[m.getMonth()]+' '+m.getFullYear()+'</div><div class="cal-grid">';
+    WDS.forEach(function(w){ html+='<div class="cal-wd">'+w+'</div>'; });
+    var firstDow=(m.getDay()+6)%7; // Пн=0
+    for (var e=0;e<firstDow;e++) html+='<div class="cal-day out"></div>';
+    var daysInM=new Date(m.getFullYear(), m.getMonth()+1, 0).getDate();
+    for (var day=1; day<=daysInM; day++){
+      var dIso=isoDate(new Date(m.getFullYear(), m.getMonth(), day));
+      if (dIso<isoDate(startDate) || dIso>isoDate(endDate)){
+        html+='<div class="cal-day out"><span class="cd-n">'+day+'</span></div>';
+        continue;
+      }
+      if (dIso>todayIso){
+        html+='<div class="cal-day future"><span class="cd-n">'+day+'</span></div>';
+        continue;
+      }
+      var v=cur.byDay[dIso]||0;
+      if (v===0){
+        html+='<div class="cal-day free"><span class="cd-n">'+day+'</span><span class="cd-v">👑</span></div>';
+      } else {
+        html+='<div class="cal-day"><span class="cd-n">'+day+'</span><span class="cd-v num">'+fmtTiny(v)+'</span></div>';
+      }
+    }
+    html+='</div></div>';
+    m=new Date(m.getFullYear(), m.getMonth()+1, 1);
+  }
+  return html;
+}
 document.getElementById('analysisBtn').addEventListener('click', function(){
   openSheet(analysisSheet);
   renderAnalysis();
@@ -1619,7 +1692,7 @@ function monthKeysBack(fromDate, n){
   return keys;
 }
 async function gatherPeriod(keys, fromDate, toDate){
-  var res={income:0, expense:0, byCat:{}, maxTx:null, txCount:0};
+  var res={income:0, expense:0, byCat:{}, maxTx:null, txCount:0, byDay:{}};
   for (var i=0;i<keys.length;i++){
     await ensureMonthLoaded(keys[i]);
     (state.txByMonth[keys[i]]||[]).forEach(function(t){
@@ -1627,6 +1700,7 @@ async function gatherPeriod(keys, fromDate, toDate){
       if (toDate && t.date>toDate) return;
       if (t.type==='income'){ res.income+=t.amount; return; }
       res.expense+=t.amount; res.txCount++;
+      res.byDay[t.date]=(res.byDay[t.date]||0)+t.amount;
       res.byCat[t.categoryId]=(res.byCat[t.categoryId]||0)+t.amount;
       if (!res.maxTx || t.amount>res.maxTx.amount) res.maxTx=t;
     });
@@ -1658,6 +1732,10 @@ async function renderAnalysis(){
     endDate=now;
   }
 
+  if (anMode==='cal'){
+    body.innerHTML = renderCalendar(cur, startDate, endDate);
+    return;
+  }
   if (cur.expense===0 && cur.income===0){
     body.innerHTML='<div class="empty">За '+periodName(anPeriod)+' пока нет операций.</div>';
     return;
